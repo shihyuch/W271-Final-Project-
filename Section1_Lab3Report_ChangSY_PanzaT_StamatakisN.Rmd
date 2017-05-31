@@ -1,0 +1,1231 @@
+---
+title: "W271 Section 1: Lab3 Report"
+author: "Shih Yu Chang, Nick Stamatakis, Tony Panza"
+date: "December 8, 2016"
+output: 
+  pdf_document: 
+    number_sections: yes
+  html_document: 
+    number_sections: yes
+---
+
+# Introduction 
+
+Many students who begin univeristy / college do not complete. There are many potential reasons for this: students may lack proper core education, schools may not provide adequate support or students may run into financial obstacles.
+
+Presented below is a study to assess the impact financial support / college cost has on completion rates. We theorize that financial stress is a cause of dropping out of college. Therefore, we have two hypotheses:
+
+a. Higher grant support increases completion rate
+b. Lower total cost for education increases completion rate
+
+There are two primary data sources for this analysis, IPEDS [5] and the College Scorecard [2]. Both are panel sets representing aggregate statistics for over 8000 colleges and universities in the United States. Standard OLS regression is used initially, and where the data allows, First Differences estimation is used to reduce OLS baises.
+
+The final conclusion is that increasing financial support on a college level by either increasing grants or effectively lowering the cost has no impact on institutional completion rates, either with broad student populations or specifially low income students.
+
+# Lower Total Cost
+
+Broadly, we are testing if a lower total cost for education increases completion rate. Specifically, we are studying the correlation between the cost of attendace vs. institutional 4 year completion rates, controlling for other factors of college completion (admission rate, average SAT score, acceptance rate). This will be tested against the full student population as well as against low income students alone.
+
+Because there is additional available data, we will use a first differences approach to handle the omitted variaible bias and possible heterogeneity arrising from the use of panel data.
+
+## Data Source
+
+The primary source of data is the College Scorecard [2]. The College Scorecard consolidates and metrics from a wide variety of government sources pertaining to numerous educational institutions across the country.
+
+As an aggregation from multiple agencies, the College Scorecard is fairly incomplete, with much missing data, and missing variables in certain years.
+
+An initial analysis of the variables we were interested in revealed that the widest possible range we could use with the least missing data was 2009 to 2012. The below table shows the data being drawn from the 2009 and 2012 datasets.
+
+```{r}
+### Data Dictionary
+# UNITID: Unit ID for institution
+# INSTNM: Institution name
+
+######## PRIMARY INDEPENDENT VARIABLES
+
+# The average annual total cost of attendance (CostT4_A, CostT4_P), 
+# including tuition and fees, books and supplies, and living expenses, minus the average 
+# grant/scholarship aid, by detailed income category. It is calculated for all full-time, 
+# first-time, degree/certificate-seeking undergraduates who receive Title IV aid.
+
+# NPT41_PUB: Average net price for $0-$30,000 family income (public institutions)
+# NPT41_PRIV: Average net price for $0-$30,000 family income (private for-profit and nonprofit institutions)
+# NPT41_PROG: Average net price for $0-$30,000 family income (program-year institutions)
+# NPT41_OTHER: Average net price for $0-$30,000 family income (other academic calendar institutions)
+
+# "low-income" defined as: less than $30,000 in nominal family income
+
+# NPT4_PUB: Average net price (all incomes) (public institutions)
+# NPT41_PRIV: Average net price (all incomes) (private for-profit and nonprofit institutions)
+# NPT41_PROG: Average net price (all incomes) (program-year institutions)
+# NPT41_OTHER: Average net price (all incomes) (other academic calendar institutions)
+
+######## PRIMARY DEPENDENT VARIABLES
+
+# LO_INC_COMP_ORIG_YR2_RT: Percent of low-income students who completed within 2 years at original institution
+# LO_INC_COMP_ORIG_YR3_RT: Percent of low-income students who completed within 3 years at original institution
+# LO_INC_COMP_ORIG_YR4_RT: Percent of low-income students who completed within 4 years at original institution
+# LO_INC_COMP_ORIG_YR6_RT: Percent of low-income students who completed within 6 years at original institution
+# LO_INC_COMP_ORIG_YR8_RT: Percent of low-income students who completed within 8 years at original institution
+
+# LO_INC_COMP_4YR_TRANS_YR2_RT: Percent of low-income students who transferred to a 4-year institution and completed within 2 years
+# LO_INC_COMP_4YR_TRANS_YR3_RT: Percent of low-income students who transferred to a 4-year institution and completed within 3 years
+# LO_INC_COMP_4YR_TRANS_YR4_RT: Percent of low-income students who transferred to a 4-year institution and completed within 4 years
+# LO_INC_COMP_4YR_TRANS_YR6_RT: Percent of low-income students who transferred to a 4-year institution and completed within 6 years
+# LO_INC_COMP_4YR_TRANS_YR8_RT: Percent of low-income students who transferred to a 4-year institution and completed within 8 years
+
+# LO_INC_COMP_2YR_TRANS_YR2_RT: Percent of low-income students who transferred to a 2-year institution and completed within 2 years
+# LO_INC_COMP_2YR_TRANS_YR3_RT: Percent of low-income students who transferred to a 2-year institution and completed within 3 years
+# LO_INC_COMP_2YR_TRANS_YR4_RT: Percent of low-income students who transferred to a 2-year institution and completed within 4 years
+# LO_INC_COMP_2YR_TRANS_YR6_RT: Percent of low-income students who transferred to a 2-year institution and completed within 6 years
+# LO_INC_COMP_2YR_TRANS_YR8_RT: Percent of low-income students who transferred to a 2-year institution and completed within 8 years
+
+# COMP_ORIG_YR4_RT - Four year completion rates (full population)
+# COMP_ORIG_YR6_RT - Six year completion rates (full population)
+
+######## CONTROL VARIABLES
+
+# CCUGPROF - Type of instituation (3 = 4 year bachelors)
+# SAT_AVG - Average SAT Score
+# ADM_RATE - Total admission rate
+# INEXPFTE - Amount spent on instruction
+# LO_INC_YR, MD_INC_YR, HI_INC_YR - Number of students in graduation cohorts at different incomes (to possibly isolate schools with different percentages of low income students)
+### 
+```
+
+## Data Importation and Cleaning
+
+To produce a final analysis_frame, substantial transformations and cleaning is required.
+
+```{r}
+MERGED2012_PP <- read.csv("~/R/Data/MERGED2012_PP.csv")
+MERGED2009_PP <- read.csv("~/R/Data/MERGED2009_PP.csv")
+
+# sometimes colname for UNITID is read as ?..UNITID (i with two dots on top)
+# other times that column is named ?..UNITID
+# rename it to just UNITID, regardless of what the leading characters are
+names(MERGED2012_PP) <- sub("^.*UNITID$", "UNITID", names(MERGED2012_PP))
+names(MERGED2009_PP) <- sub("^.*UNITID$", "UNITID", names(MERGED2009_PP))
+
+
+colsearch_09 <- colnames(MERGED2009_PP)
+colsearch_12 <- colnames(MERGED2012_PP)
+
+Merged_09 <- MERGED2009_PP[,c(colsearch_09[grep("LO_INC_COMP", colsearch_09)],
+                              colsearch_09[grep("NPT41", colsearch_09)],
+                              colsearch_09[grep("NPT4_", colsearch_09)],
+                              colsearch_09[grep("LO_INC_YR", colsearch_09)],
+                              colsearch_09[grep("MD_INC_YR", colsearch_09)],
+                              colsearch_09[grep("HI_INC_YR", colsearch_09)],
+                      "UNITID","INSTNM","OPEID","PREDDEG","CCUGPROF","SAT_AVG","ADM_RATE","INEXPFTE","COMP_ORIG_YR4_RT","COMP_ORIG_YR6_RT")]
+
+Merged_12 <- MERGED2012_PP[,c(colsearch_12[grep("LO_INC_COMP", colsearch_12)], 
+                              colsearch_12[grep("NPT41", colsearch_12)],
+                              colsearch_12[grep("NPT4_", colsearch_12)],
+                              colsearch_12[grep("LO_INC_YR", colsearch_12)],
+                              colsearch_12[grep("MD_INC_YR", colsearch_12)],
+                              colsearch_09[grep("HI_INC_YR", colsearch_12)],                                    "UNITID","INSTNM","OPEID","PREDDEG","CCUGPROF","SAT_AVG","ADM_RATE","INEXPFTE","COMP_ORIG_YR4_RT","COMP_ORIG_YR6_RT")]
+
+
+main_frame <- merge(Merged_09, Merged_12, by.x = "UNITID", by.y = "UNITID")
+
+
+# Some values throughout many columns in main_frame are missing
+# In some cases, these are coded as "NULL".
+# In other cases, these are coded as "PrivacySuppressed".
+# Recoded both of these to NA
+main_frame[main_frame == "NULL"] <- NA
+main_frame[main_frame == "PrivacySuppressed"] <- NA
+
+# convert all NPT4*.x cols to numemric
+main_frame$NPT41_PUB.x <- as.numeric(as.character(main_frame[,c("NPT41_PUB.x")]))
+main_frame$NPT41_PRIV.x <- as.numeric(as.character(main_frame[,c("NPT41_PRIV.x")]))
+main_frame$NPT41_PROG.x <- as.numeric(as.character(main_frame[,c("NPT41_PROG.x")]))
+main_frame$NPT41_OTHER.x <- as.numeric(as.character(main_frame[,c("NPT41_OTHER.x")]))
+
+main_frame$NPT4_PUB.x <- as.numeric(as.character(main_frame[,c("NPT4_PUB.x")]))
+main_frame$NPT4_PRIV.x <- as.numeric(as.character(main_frame[,c("NPT4_PRIV.x")]))
+main_frame$NPT4_PROG.x <- as.numeric(as.character(main_frame[,c("NPT4_PROG.x")]))
+main_frame$NPT4_OTHER.x <- as.numeric(as.character(main_frame[,c("NPT4_OTHER.x")]))
+
+# now that all of the NPT4_*.x cols are numeric, merge them into one,
+# since they are mutually exclusive (only one can be non-NA)
+main_frame$NPT41.x<-rowSums(main_frame[, c("NPT41_PUB.x", "NPT41_PRIV.x", "NPT41_PROG.x", "NPT41_OTHER.x")], na.rm=T)
+main_frame$NPT4.x<-rowSums(main_frame[, c("NPT4_PUB.x", "NPT4_PRIV.x", "NPT4_PROG.x", "NPT4_OTHER.x")], na.rm=T)
+
+# if all of the NPT41_*.x cols were NA in a row, then NPT41.x is 0. convert these rows back to NA
+main_frame$NPT41.x[main_frame$NPT41.x == 0] <- NA
+main_frame$NPT4.x[main_frame$NPT41.x == 0] <- NA
+
+# convert all NPT4_*.y cols to numemric
+main_frame$NPT41_PUB.y <- as.numeric(as.character(main_frame[,c("NPT41_PUB.y")]))
+main_frame$NPT41_PRIV.y <- as.numeric(as.character(main_frame[,c("NPT41_PRIV.y")]))
+main_frame$NPT41_PROG.y <- as.numeric(as.character(main_frame[,c("NPT41_PROG.y")]))
+main_frame$NPT41_OTHER.y <- as.numeric(as.character(main_frame[,c("NPT41_OTHER.y")]))
+
+main_frame$NPT4_PUB.y <- as.numeric(as.character(main_frame[,c("NPT4_PUB.y")]))
+main_frame$NPT4_PRIV.y <- as.numeric(as.character(main_frame[,c("NPT4_PRIV.y")]))
+main_frame$NPT4_PROG.y <- as.numeric(as.character(main_frame[,c("NPT4_PROG.y")]))
+main_frame$NPT4_OTHER.y <- as.numeric(as.character(main_frame[,c("NPT4_OTHER.y")]))
+
+
+# now that all of the NPT41_*.y cols are numeric, merge them into one,
+# since they are mutually exclusive (only one can be non-NA)
+main_frame$NPT41.y<-rowSums(main_frame[, c("NPT41_PUB.y", "NPT41_PRIV.y", "NPT41_PROG.y", "NPT41_OTHER.y")], na.rm=T)
+main_frame$NPT4.y<-rowSums(main_frame[, c("NPT4_PUB.y", "NPT4_PRIV.y", "NPT4_PROG.y", "NPT4_OTHER.y")], na.rm=T)
+
+
+# if all of the NPT41_*.y cols were NA in a row, then NPT41.y is 0. convert these rows back to NA
+main_frame$NPT41.y[main_frame$NPT41.y == 0] <- NA
+main_frame$NPT4.y[main_frame$NPT4.y == 0] <- NA
+
+# Convert the Completion rates to numbers
+main_frame$LO_INC_COMP_ORIG_YR2_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_ORIG_YR2_RT.x")]))
+main_frame$LO_INC_COMP_4YR_TRANS_YR2_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_4YR_TRANS_YR2_RT.x")]))
+main_frame$LO_INC_COMP_2YR_TRANS_YR2_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_2YR_TRANS_YR2_RT.x")]))
+main_frame$LO_INC_COMP_ORIG_YR3_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_ORIG_YR3_RT.x")]))
+main_frame$LO_INC_COMP_4YR_TRANS_YR3_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_4YR_TRANS_YR3_RT.x")]))
+main_frame$LO_INC_COMP_2YR_TRANS_YR3_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_2YR_TRANS_YR3_RT.x")]))
+main_frame$LO_INC_COMP_ORIG_YR4_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_ORIG_YR4_RT.x")]))
+main_frame$LO_INC_COMP_4YR_TRANS_YR4_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_4YR_TRANS_YR4_RT.x")]))
+main_frame$LO_INC_COMP_2YR_TRANS_YR4_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_2YR_TRANS_YR4_RT.x")]))
+main_frame$LO_INC_COMP_ORIG_YR6_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_ORIG_YR6_RT.x")]))
+main_frame$LO_INC_COMP_4YR_TRANS_YR6_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_4YR_TRANS_YR6_RT.x")]))
+main_frame$LO_INC_COMP_2YR_TRANS_YR6_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_2YR_TRANS_YR6_RT.x")]))
+main_frame$LO_INC_COMP_ORIG_YR8_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_ORIG_YR8_RT.x")]))
+main_frame$LO_INC_COMP_4YR_TRANS_YR8_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_4YR_TRANS_YR8_RT.x")]))
+main_frame$LO_INC_COMP_2YR_TRANS_YR8_RT.x <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_2YR_TRANS_YR8_RT.x")]))
+
+main_frame$LO_INC_COMP_ORIG_YR2_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_ORIG_YR2_RT.y")]))
+main_frame$LO_INC_COMP_4YR_TRANS_YR2_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_4YR_TRANS_YR2_RT.y")]))
+main_frame$LO_INC_COMP_2YR_TRANS_YR2_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_2YR_TRANS_YR2_RT.y")]))
+main_frame$LO_INC_COMP_ORIG_YR3_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_ORIG_YR3_RT.y")]))
+main_frame$LO_INC_COMP_4YR_TRANS_YR3_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_4YR_TRANS_YR3_RT.y")]))
+main_frame$LO_INC_COMP_2YR_TRANS_YR3_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_2YR_TRANS_YR3_RT.y")]))
+main_frame$LO_INC_COMP_ORIG_YR4_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_ORIG_YR4_RT.y")]))
+main_frame$LO_INC_COMP_4YR_TRANS_YR4_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_4YR_TRANS_YR4_RT.y")]))
+main_frame$LO_INC_COMP_2YR_TRANS_YR4_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_2YR_TRANS_YR4_RT.y")]))
+main_frame$LO_INC_COMP_ORIG_YR6_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_ORIG_YR6_RT.y")]))
+main_frame$LO_INC_COMP_4YR_TRANS_YR6_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_4YR_TRANS_YR6_RT.y")]))
+main_frame$LO_INC_COMP_2YR_TRANS_YR6_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_2YR_TRANS_YR6_RT.y")]))
+main_frame$LO_INC_COMP_ORIG_YR8_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_ORIG_YR8_RT.y")]))
+main_frame$LO_INC_COMP_4YR_TRANS_YR8_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_4YR_TRANS_YR8_RT.y")]))
+main_frame$LO_INC_COMP_2YR_TRANS_YR8_RT.y <- as.numeric(as.character(main_frame[,c("LO_INC_COMP_2YR_TRANS_YR8_RT.y")]))
+
+
+
+# convert cohort values
+main_frame$LO_INC_YR2_N.x <- as.numeric(as.character(main_frame[,c("LO_INC_YR2_N.x")]))
+main_frame$LO_INC_YR3_N.x <- as.numeric(as.character(main_frame[,c("LO_INC_YR3_N.x")]))
+main_frame$LO_INC_YR4_N.x <- as.numeric(as.character(main_frame[,c("LO_INC_YR4_N.x")]))
+main_frame$LO_INC_YR6_N.x <- as.numeric(as.character(main_frame[,c("LO_INC_YR6_N.x")]))
+main_frame$LO_INC_YR8_N.x <- as.numeric(as.character(main_frame[,c("LO_INC_YR8_N.x")]))
+
+main_frame$MD_INC_YR2_N.x <- as.numeric(as.character(main_frame[,c("MD_INC_YR2_N.x")]))
+main_frame$MD_INC_YR3_N.x <- as.numeric(as.character(main_frame[,c("MD_INC_YR3_N.x")]))
+main_frame$MD_INC_YR4_N.x <- as.numeric(as.character(main_frame[,c("MD_INC_YR4_N.x")]))
+main_frame$MD_INC_YR6_N.x <- as.numeric(as.character(main_frame[,c("MD_INC_YR6_N.x")]))
+main_frame$MD_INC_YR8_N.x <- as.numeric(as.character(main_frame[,c("MD_INC_YR8_N.x")]))
+
+main_frame$HI_INC_YR2_N.x <- as.numeric(as.character(main_frame[,c("HI_INC_YR2_N.x")]))
+main_frame$HI_INC_YR3_N.x <- as.numeric(as.character(main_frame[,c("HI_INC_YR3_N.x")]))
+main_frame$HI_INC_YR4_N.x <- as.numeric(as.character(main_frame[,c("HI_INC_YR4_N.x")]))
+main_frame$HI_INC_YR6_N.x <- as.numeric(as.character(main_frame[,c("HI_INC_YR6_N.x")]))
+main_frame$HI_INC_YR8_N.x <- as.numeric(as.character(main_frame[,c("HI_INC_YR8_N.x")]))
+
+main_frame$LO_INC_YR2_N.y <- as.numeric(as.character(main_frame[,c("LO_INC_YR2_N.y")]))
+main_frame$LO_INC_YR3_N.y <- as.numeric(as.character(main_frame[,c("LO_INC_YR3_N.y")]))
+main_frame$LO_INC_YR4_N.y <- as.numeric(as.character(main_frame[,c("LO_INC_YR4_N.y")]))
+main_frame$LO_INC_YR6_N.y <- as.numeric(as.character(main_frame[,c("LO_INC_YR6_N.y")]))
+main_frame$LO_INC_YR8_N.y <- as.numeric(as.character(main_frame[,c("LO_INC_YR8_N.y")]))
+
+main_frame$MD_INC_YR2_N.y <- as.numeric(as.character(main_frame[,c("MD_INC_YR2_N.y")]))
+main_frame$MD_INC_YR3_N.y <- as.numeric(as.character(main_frame[,c("MD_INC_YR3_N.y")]))
+main_frame$MD_INC_YR4_N.y <- as.numeric(as.character(main_frame[,c("MD_INC_YR4_N.y")]))
+main_frame$MD_INC_YR6_N.y <- as.numeric(as.character(main_frame[,c("MD_INC_YR6_N.y")]))
+main_frame$MD_INC_YR8_N.y <- as.numeric(as.character(main_frame[,c("MD_INC_YR8_N.y")]))
+
+main_frame$HI_INC_YR2_N.y <- as.numeric(as.character(main_frame[,c("HI_INC_YR2_N.y")]))
+main_frame$HI_INC_YR3_N.y <- as.numeric(as.character(main_frame[,c("HI_INC_YR3_N.y")]))
+main_frame$HI_INC_YR4_N.y <- as.numeric(as.character(main_frame[,c("HI_INC_YR4_N.y")]))
+main_frame$HI_INC_YR6_N.y <- as.numeric(as.character(main_frame[,c("HI_INC_YR6_N.y")]))
+main_frame$HI_INC_YR8_N.y <- as.numeric(as.character(main_frame[,c("HI_INC_YR8_N.y")]))
+
+main_frame$SAT_AVG.y <- as.numeric(as.character(main_frame[,c("SAT_AVG.y")]))
+main_frame$SAT_AVG.x <- as.numeric(as.character(main_frame[,c("SAT_AVG.x")]))
+
+main_frame$ADM_RATE.x <- as.numeric(as.character(main_frame[,c("ADM_RATE.x")]))
+main_frame$ADM_RATE.y <- as.numeric(as.character(main_frame[,c("ADM_RATE.y")]))
+
+main_frame$INEXPFTE.x <- as.numeric(as.character(main_frame[,c("INEXPFTE.x")]))
+main_frame$INEXPFTE.y <- as.numeric(as.character(main_frame[,c("INEXPFTE.y")]))
+
+main_frame$COMP_ORIG_YR4_RT.x <- as.numeric(as.character(main_frame[,c("COMP_ORIG_YR4_RT.x")]))
+main_frame$COMP_ORIG_YR4_RT.y <- as.numeric(as.character(main_frame[,c("COMP_ORIG_YR4_RT.y")]))
+
+### Calculate Completion Rates
+main_frame$yr4.x <-
+(
+ifelse(is.na(main_frame$LO_INC_COMP_ORIG_YR4_RT.x),0,main_frame$LO_INC_COMP_ORIG_YR4_RT.x)
++
+ifelse(is.na(main_frame$LO_INC_COMP_4YR_TRANS_YR4_RT.x),0,main_frame$LO_INC_COMP_4YR_TRANS_YR4_RT.x)
++
+ifelse(is.na(main_frame$LO_INC_COMP_2YR_TRANS_YR4_RT.x),0,main_frame$LO_INC_COMP_2YR_TRANS_YR4_RT.x)
+)
+
+main_frame$yr4.y <-
+(
+ifelse(is.na(main_frame$LO_INC_COMP_ORIG_YR4_RT.y),0,main_frame$LO_INC_COMP_ORIG_YR4_RT.y)
++
+ifelse(is.na(main_frame$LO_INC_COMP_4YR_TRANS_YR4_RT.y),0,main_frame$LO_INC_COMP_4YR_TRANS_YR4_RT.y)
++
+ifelse(is.na(main_frame$LO_INC_COMP_2YR_TRANS_YR4_RT.y),0,main_frame$LO_INC_COMP_2YR_TRANS_YR4_RT.y)
+)
+
+main_frame$yr6.x <-
+(
+ifelse(is.na(main_frame$LO_INC_COMP_ORIG_YR6_RT.x),0,main_frame$LO_INC_COMP_ORIG_YR6_RT.x)
++
+ifelse(is.na(main_frame$LO_INC_COMP_4YR_TRANS_YR6_RT.x),0,main_frame$LO_INC_COMP_4YR_TRANS_YR6_RT.x)
++
+ifelse(is.na(main_frame$LO_INC_COMP_2YR_TRANS_YR6_RT.x),0,main_frame$LO_INC_COMP_2YR_TRANS_YR6_RT.x)
+)
+
+main_frame$yr6.y <-
+(
+ifelse(is.na(main_frame$LO_INC_COMP_ORIG_YR6_RT.y),0,main_frame$LO_INC_COMP_ORIG_YR6_RT.y)
++
+ifelse(is.na(main_frame$LO_INC_COMP_4YR_TRANS_YR6_RT.y),0,main_frame$LO_INC_COMP_4YR_TRANS_YR6_RT.y)
++
+ifelse(is.na(main_frame$LO_INC_COMP_2YR_TRANS_YR6_RT.y),0,main_frame$LO_INC_COMP_2YR_TRANS_YR6_RT.y)
+)
+
+main_frame$yr8.x <-
+(
+ifelse(is.na(main_frame$LO_INC_COMP_ORIG_YR8_RT.x),0,main_frame$LO_INC_COMP_ORIG_YR8_RT.x)
++
+ifelse(is.na(main_frame$LO_INC_COMP_4YR_TRANS_YR8_RT.x),0,main_frame$LO_INC_COMP_4YR_TRANS_YR8_RT.x)
++
+ifelse(is.na(main_frame$LO_INC_COMP_2YR_TRANS_YR8_RT.x),0,main_frame$LO_INC_COMP_2YR_TRANS_YR8_RT.x)
+)
+                                     
+main_frame$yr8.y <-
+(
+ifelse(is.na(main_frame$LO_INC_COMP_ORIG_YR8_RT.y),0,main_frame$LO_INC_COMP_ORIG_YR8_RT.y)
++
+ifelse(is.na(main_frame$LO_INC_COMP_4YR_TRANS_YR8_RT.y),0,main_frame$LO_INC_COMP_4YR_TRANS_YR8_RT.y)
++
+ifelse(is.na(main_frame$LO_INC_COMP_2YR_TRANS_YR8_RT.y),0,main_frame$LO_INC_COMP_2YR_TRANS_YR8_RT.y)
+)
+
+## Agregate Cohort statistics
+main_frame$cohortsize_8.x <- 
+  ifelse(is.na(main_frame$LO_INC_YR8_N.x),0,main_frame$LO_INC_YR8_N.x) + 
+  ifelse(is.na(main_frame$MD_INC_YR8_N.x),0,main_frame$MD_INC_YR8_N.x) + 
+  ifelse(is.na(main_frame$HI_INC_YR8_N.x),0,main_frame$HI_INC_YR8_N.x)
+main_frame$cohortsize_8.y <- 
+  ifelse(is.na(main_frame$LO_INC_YR8_N.y),0,main_frame$LO_INC_YR8_N.y) + 
+  ifelse(is.na(main_frame$MD_INC_YR8_N.y),0,main_frame$MD_INC_YR8_N.y) + 
+  ifelse(is.na(main_frame$HI_INC_YR8_N.y),0,main_frame$HI_INC_YR8_N.y)
+  
+main_frame$cohortsize_6.x <-
+  ifelse(is.na(main_frame$LO_INC_YR6_N.x),0,main_frame$LO_INC_YR6_N.x) + 
+  ifelse(is.na(main_frame$MD_INC_YR6_N.x),0,main_frame$MD_INC_YR6_N.x) + 
+  ifelse(is.na(main_frame$HI_INC_YR6_N.x),0,main_frame$HI_INC_YR6_N.x)  
+main_frame$cohortsize_6.y <- 
+  ifelse(is.na(main_frame$LO_INC_YR6_N.y),0,main_frame$LO_INC_YR6_N.y) + 
+  ifelse(is.na(main_frame$MD_INC_YR6_N.y),0,main_frame$MD_INC_YR6_N.y) + 
+  ifelse(is.na(main_frame$HI_INC_YR6_N.y),0,main_frame$HI_INC_YR6_N.y)    
+  
+main_frame$cohortsize_4.x <-
+  ifelse(is.na(main_frame$LO_INC_YR4_N.x),0,main_frame$LO_INC_YR4_N.x) + 
+  ifelse(is.na(main_frame$MD_INC_YR4_N.x),0,main_frame$MD_INC_YR4_N.x) + 
+  ifelse(is.na(main_frame$HI_INC_YR4_N.x),0,main_frame$HI_INC_YR4_N.x)  
+main_frame$cohortsize_4.y <- 
+  ifelse(is.na(main_frame$LO_INC_YR4_N.y),0,main_frame$LO_INC_YR4_N.y) + 
+  ifelse(is.na(main_frame$MD_INC_YR4_N.y),0,main_frame$MD_INC_YR4_N.y) + 
+  ifelse(is.na(main_frame$HI_INC_YR4_N.y),0,main_frame$HI_INC_YR4_N.y) 
+
+main_frame$percentlow_8.x <- main_frame$LO_INC_YR8_N.x / main_frame$cohortsize_8.x
+main_frame$percentlow_8.y <- main_frame$LO_INC_YR8_N.y / main_frame$cohortsize_8.y
+
+main_frame$percentlow_6.x <- main_frame$LO_INC_YR6_N.x / main_frame$cohortsize_6.x
+main_frame$percentlow_6.y <- main_frame$LO_INC_YR6_N.y / main_frame$cohortsize_6.y
+
+main_frame$percentlow_4.x <- main_frame$LO_INC_YR4_N.x / main_frame$cohortsize_4.x
+main_frame$percentlow_4.y <- main_frame$LO_INC_YR4_N.y / main_frame$cohortsize_4.y
+
+
+## Identify records with full cohort sizes
+main_frame$hi_size_all_8 <- 
+  ifelse(ifelse(is.na(main_frame$HI_INC_YR8_N.y),0,main_frame$HI_INC_YR8_N.y) == 0, 0, 
+  ifelse(ifelse(is.na(main_frame$HI_INC_YR8_N.x),0,main_frame$HI_INC_YR8_N.x) == 0, 0, 1))
+main_frame$med_size_all_8 <-
+  ifelse(ifelse(is.na(main_frame$MD_INC_YR8_N.y),0,main_frame$MD_INC_YR8_N.y) == 0, 0, 
+  ifelse(ifelse(is.na(main_frame$MD_INC_YR8_N.x),0,main_frame$MD_INC_YR8_N.x) == 0, 0, 1))
+main_frame$low_size_all_8 <-
+  ifelse(ifelse(is.na(main_frame$LO_INC_YR8_N.y),0,main_frame$LO_INC_YR8_N.y) == 0, 0, 
+  ifelse(ifelse(is.na(main_frame$LO_INC_YR8_N.x),0,main_frame$LO_INC_YR8_N.x) == 0, 0, 1))
+
+main_frame$hi_size_all_6 <- 
+  ifelse(ifelse(is.na(main_frame$HI_INC_YR6_N.y),0,main_frame$HI_INC_YR6_N.y) == 0, 0, 
+  ifelse(ifelse(is.na(main_frame$HI_INC_YR6_N.x),0,main_frame$HI_INC_YR6_N.x) == 0, 0, 1))
+main_frame$med_size_all_6 <-
+  ifelse(ifelse(is.na(main_frame$MD_INC_YR6_N.y),0,main_frame$MD_INC_YR6_N.y) == 0, 0, 
+  ifelse(ifelse(is.na(main_frame$MD_INC_YR6_N.x),0,main_frame$MD_INC_YR6_N.x) == 0, 0, 1))
+main_frame$low_size_all_6 <- 
+  ifelse(ifelse(is.na(main_frame$LO_INC_YR6_N.y),0,main_frame$LO_INC_YR6_N.y) == 0, 0, 
+  ifelse(ifelse(is.na(main_frame$LO_INC_YR6_N.x),0,main_frame$LO_INC_YR6_N.x) == 0, 0, 1))
+
+main_frame$hi_size_all_4 <-
+  ifelse(ifelse(is.na(main_frame$HI_INC_YR4_N.y),0,main_frame$HI_INC_YR4_N.y) == 0, 0, 
+  ifelse(ifelse(is.na(main_frame$HI_INC_YR4_N.x),0,main_frame$HI_INC_YR4_N.x) == 0, 0, 1))  
+main_frame$med_size_all_4 <-
+  ifelse(ifelse(is.na(main_frame$MD_INC_YR4_N.y),0,main_frame$MD_INC_YR4_N.y) == 0, 0, 
+  ifelse(ifelse(is.na(main_frame$MD_INC_YR4_N.x),0,main_frame$MD_INC_YR4_N.x) == 0, 0, 1))  
+main_frame$low_size_all_4 <-
+  ifelse(ifelse(is.na(main_frame$LO_INC_YR4_N.y),0,main_frame$LO_INC_YR4_N.y) == 0, 0, 
+  ifelse(ifelse(is.na(main_frame$LO_INC_YR4_N.x),0,main_frame$LO_INC_YR4_N.x) == 0, 0, 1))
+
+main_frame$full_cohort <- ifelse(main_frame$low_size_all_4 == 1 & (main_frame$med_size_all_4 == 1 | main_frame$hi_size_all_4 == 1),1,0)
+
+## Identify records with full completion information
+main_frame$compall8 <- ifelse(main_frame$yr8.y == 0, 0, ifelse(main_frame$yr8.x == 0, 0, 1))
+main_frame$compall6 <- ifelse(main_frame$yr6.y == 0, 0, ifelse(main_frame$yr6.x == 0, 0, 1))
+main_frame$compall4 <- ifelse(main_frame$yr4.y == 0, 0, ifelse(main_frame$yr4.x == 0, 0, 1))
+
+## Identify records with full cost information
+main_frame$costall <- ifelse(is.na(main_frame$NPT41.y),0,ifelse(is.na(main_frame$NPT41.x),0,1))
+main_frame$yr4school <- ifelse(main_frame$NPT41_PUB.x > 0 | main_frame$NPT41_PRIV.x > 0,1,0)
+
+## Determine the change in completion rates
+main_frame$low_comp_change <- main_frame$yr4.y - main_frame$yr4.x
+main_frame$low_comp_change_rate <- (main_frame$yr4.y - main_frame$yr4.x) / main_frame$yr4.x
+main_frame$low_cost_change <- main_frame$NPT41.y - main_frame$NPT41.x
+main_frame$low_cost_change_rate <- (main_frame$NPT41.y - main_frame$NPT41.x)/main_frame$NPT41.x
+main_frame$all_comp_change <- main_frame$COMP_ORIG_YR4_RT.y - main_frame$COMP_ORIG_YR4_RT.x
+main_frame$all_cost_change <- main_frame$NPT4.y - main_frame$NPT4.x
+
+main_frame$all_comp_change_rate <- (main_frame$COMP_ORIG_YR4_RT.y - main_frame$COMP_ORIG_YR4_RT.x)/ main_frame$COMP_ORIG_YR4_RT.x
+main_frame$all_cost_change_rate <- (main_frame$NPT4.y - main_frame$NPT4.x) / main_frame$NPT4.x
+
+main_frame$sat_change <- main_frame$SAT_AVG.y - main_frame$SAT_AVG.x
+main_frame$adm_change <- main_frame$ADM_RATE.y - main_frame$ADM_RATE.x
+main_frame$instrspend_change <- main_frame$INEXPFTE.y - main_frame$INEXPFTE.x
+
+main_frame$perlow_change <- main_frame$percentlow_4.y - main_frame$percentlow_4.x
+
+```
+
+The final analysis_frame has 634 colleges and univeristies, down from 6706 initially, due to high amounts of missing data and eliminating about 1000 non bachelor's focused schools.
+
+```{r}
+analysis_frame <-main_frame[
+                              main_frame$full_cohort == 1
+                             & main_frame$compall4 == 1 
+                             & main_frame$costall == 1 
+                             & main_frame$yr4school == 1  
+,c("UNITID","INSTNM.x","NPT41.y","NPT41.x","low_comp_change","low_cost_change","yr4.y","yr4.x","low_comp_change_rate","low_cost_change_rate","low_comp_change","cohortsize_4.x","cohortsize_4.y","low_size_all_4","med_size_all_4","hi_size_all_4","percentlow_4.x","sat_change","adm_change","instrspend_change","all_comp_change","all_cost_change","PREDDEG.x","SAT_AVG.x","ADM_RATE.x","INEXPFTE.x","COMP_ORIG_YR4_RT.x","NPT4.x","all_comp_change_rate","all_cost_change_rate","perlow_change")]
+
+analysis_frame <- analysis_frame[analysis_frame$PREDDEG.x==3,]
+analysis_frame <- na.omit(analysis_frame)
+analysis_frame <- analysis_frame[analysis_frame$all_cost_change > -20000,] ## (Cost went from very positive to very negative for this university ... removed from analysis)
+```
+
+Preliminary analysis:
+
+Control Variables
+```{r}
+par(mfrow=c(2,4))
+hist(analysis_frame$SAT_AVG.x, main="2009 SAT AVG")
+hist(analysis_frame$ADM_RATE.x, main="2009 ADMIN RATE")
+hist(analysis_frame$INEXPFTE.x, main="2009 TEACH SPEND") ##extreme outliers are ivy league schools
+hist(analysis_frame$percentlow_4.x, main="2009 PERCENT LOW INC")
+hist(analysis_frame$sat_change, main="SAT CHANGE 2009-2012")
+hist(analysis_frame$adm_change, main="ADMIN CHANGE 2009-2012")
+hist(analysis_frame$instrspend_change, main="TEACH SPEND CHANGE 2009-2012")
+hist(analysis_frame$perlow_change, main="PERCENT LOW INC CHANGE 2009-2012")
+```
+
+Dependent Variables
+```{r}
+par(mfrow=c(2,2))
+hist(analysis_frame$NPT41.x, main="2009 Low Income Cost")
+hist(analysis_frame$NPT4.x, main="2009 General Cost")
+hist(analysis_frame$low_cost_change, main="Low Income Cost Change 2009-2012")
+hist(analysis_frame$all_cost_change, main="General Cost Change 2009-2012")
+```
+
+Independent Variables
+```{r}
+par(mfrow=c(3,2))
+hist(analysis_frame$yr4.x, main="2009 Low Income Completion")
+hist(analysis_frame$COMP_ORIG_YR4_RT.x, main="2009 General Completion")
+hist(analysis_frame$low_comp_change, main="Completion Change 2009 - 2012")
+hist(analysis_frame$all_comp_change, main="Completion Change 2009 - 2012")
+hist(analysis_frame$low_comp_change_rate, main="Low Income % Completion Change 2009 - 2012")
+hist(analysis_frame$all_comp_change_rate, main="All % Completion Change  2009 - 2012")
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(analysis_frame$NPT41.x,analysis_frame$yr4.x, main = "2009 Low Income Cost vs. Completion Rate", xlab = "Low Income Student Cost", ylab = "Completion Rate")
+plot(analysis_frame$NPT4.x,analysis_frame$COMP_ORIG_YR4_RT.x, main = "2009 General Cost vs. Completion Rate", xlab = "All Student Cost", ylab = "Completion Rate")
+plot(analysis_frame$all_cost_change,analysis_frame$all_comp_change, main = "2009 - 2012 - Low Income Cost vs. Completion Rate Change", xlab = "Low Income Student Cost Change", ylab = "Completion Change")
+plot(analysis_frame$low_cost_change,analysis_frame$low_comp_change, main = "2009 - 2012 - All Income Cost vs. Completion Rate Change", xlab = "All Income Student Cost Change", ylab = "Completion Change")
+```
+
+The extreme differences between these two plots demonstrate the need for a first differences model to understand the impact of cost.
+
+First we estimate two standard linear models:
+
+$$ y = b_0 + x_1 b_1 + ...+ x_k b_k + u $$
+
+The variables are the following variaibles
+$$ b_1 - NPT4.x - Cost $$
+$$ b_2 - ADM_RATE.x - Admission Rate $$
+$$ b_3 - SAT_AVG.x - Average SAT Score $$
+$$ b_4 - INEXPFTE.x - Average spent on teaching $$
+
+Additionally, the low income model includes a fifth variaible
+$$ b_b - percentlow_4.x - Percentage of students in the low income cohort$$
+
+
+```{r}
+all_2009 <- lm(COMP_ORIG_YR4_RT.x * 100 ~ NPT4.x + ADM_RATE.x + SAT_AVG.x + INEXPFTE.x, data = analysis_frame)
+coeftest(all_2009, vcov=vcovHC)
+par(mfrow=c(2,2))
+plot(all_2009)
+
+low_2009 <- lm(yr4.x * 100 ~ NPT41.x + ADM_RATE.x + SAT_AVG.x + INEXPFTE.x + percentlow_4.x, data = analysis_frame)
+coeftest(low_2009, vcov=vcovHC)
+plot(low_2009)
+```
+
+On first glance, this appears to indicate high statistical signifiance for payment (although of negligible magnitude). Moreover, other predictive factors appear to influence the graduation rate.
+
+However, it is very likely both of these model from Part I suffer from the same problem as the model before, unobserved variables:
+
+$$ y = b_0 + x_1 b_1 + ...+ x_k b_k + c + u $$
+
+If c is imagined as a school's general quality or the ernstwhile nature of the students it attracts, it is likely coorelated with the primary variable we care about, price. If this is a case, the covariance of the total error terms will not be zero.
+
+Therefore, it is required that we utilized an unobserved effects model, with first differencing to remove the unobserved effects. This will isolate the variables of concern.
+
+Supose a standard unobserved effects model:
+
+$$ y_{it} = x_{it} b + c_i + u_{it} $$
+
+if you subtract out the previous within-unit observation, we have a first-difference transformation:
+
+$$ \Delta y_{it} = \Delta x b + \Delta*u_{it} $$
+
+This model eliminates c, reducing the liklihood of the covaraiance of errors not being zero.
+
+```{r}
+all_change <- lm(all_comp_change * 100 ~ all_cost_change + sat_change + adm_change + instrspend_change, data = analysis_frame)
+coeftest(all_change, vcov=vcovHC)
+plot(all_change)
+
+low_change <- lm(low_comp_change * 100 ~ low_cost_change + sat_change + adm_change + instrspend_change, data = analysis_frame)
+coeftest(low_change, vcov=vcovHC)
+plot(low_change)
+
+low_change_perlow <- lm(low_comp_change * 100 ~ low_cost_change + sat_change + adm_change + instrspend_change + perlow_change, data = analysis_frame)
+coeftest(low_change, vcov=vcovHC)
+plot(low_change)
+```
+
+These models show residual patterns more consistent with the OLS assumptions. The Q-Q plot suggests there is possibly a violation of the normality assumption, but the vast majority of the observations appear follow a normal curve, and the number of outliers is relatively small compared to the population size.
+
+The key take away however, is that the first difference model aligns with what was observed in cross-sectional data: price of education does not appear to impact completion rate.
+
+Here, the significance of all the variables disappears. This suggests it is unobserved factors about schools and students that drive completion rate rather than direct changes to the cost or price.
+
+# Part 2
+
+We start by analyzing the effect of grants and loans on college student graduation rate.
+
+## Data Source
+
+The data source used here is the Delta Cost Project Database made available by the Integrated Postsecondary Education Data System (IPEDS) [5]. This is a longitudinal study (panel data) from 1987 to 2012, consisting of 974 variables collected from postsecondary institutions throughout the United States. For the purposes of this study, we restrict ourselves to the cross sectional data from 2009 due to it having the best combination of completeness and recency.
+
+## Data Dictionary
+
+* fed_grant_num: Number of full-time first-time degree/certificate-seeking undergraduates receiving federal grants
+* fed_grant_pct: Percentage of full-time first-time degree/certificate-seeking undergraduates receiving federal grants
+* fed_grant_avg_amount: Average amount of federal grants received by full-time first-time degree/certificate-seeking undergraduates
+* state_grant_num: Number of full-time first-time degree/certificate-seeking undergraduates receiving state/local grants
+* state_grant_pct: Percentage of full-time first-time degree/certificate-seeking undergraduates receiving state/local grants
+* state_grant_avg_amount: Average amount of state/local grants received by full-time first-time degree/certificate-seeking undergraduates
+* loan_num: Number of full-time first-time degree/certificate-seeking undergraduates receiving student loans
+* loan_pct: Percentage of full-time first-time degree/certificate-seeking undergraduates receiving student loans
+* loan_avg_amount: Average amount of student loans received by full-time first-time degree/certificate-seeking undergraduates
+* bachelordegrees: Number of bachelor's degrees granted
+* grad_rate_150_n: Number of students graduating within 150 percent of normal time
+* grad_rate_150_p: Percentage of students graduating within 150 percent of normal time
+* ftretention_rate: Full-time retention rate
+
+## Data Cleaning and EDA
+
+Examine data without NA by following :
+
+```{r, message=FALSE, warning=FALSE}
+library(car)
+library(stargazer)
+library(sandwich)
+library(zoo)
+library(lmtest)
+library(lattice)
+library(survival)
+library(Formula)
+library(ggplot2)
+library(Hmisc)
+library(aod)
+```
+
+```{r}
+data_no_NA = delta_public_00_12 <- read.csv("~/R/Data/MyData_years.csv")
+str(data_no_NA)
+```
+
+### Cleaning `fed_grant_num`, `fed_grant_pct`, and `fed_grant_avg_amount`
+
+Most (95%) observations of `fed_grant_pct` are between 0 and 82, which is what we expect for a percentage.
+
+```{r}
+summary(data_no_NA$fed_grant_pct)
+describe(data_no_NA$fed_grant_pct)
+hist(data_no_NA$fed_grant_pct, 
+     main='fed_grant_pct, bins=50', xlab='fed_grant_pct', breaks=50)
+length(data_no_NA$fed_grant_pct[data_no_NA$fed_grant_pct > 100])
+hist(data_no_NA$fed_grant_pct[data_no_NA$fed_grant_pct <= 100], 
+     main='fed_grant_pct, bins=50', xlab='fed_grant_pct <= 100', breaks=50)
+```
+
+17 observations of `fed_grant_pct` are greater than 100, ranging from 103 to 830. One possible explanation for these is that they should be divided by 10. For now, we intend to simply omit these since there are so few.
+
+```{r}
+summary(data_no_NA$fed_grant_num)
+describe(data_no_NA$fed_grant_num)
+hist(data_no_NA$fed_grant_num, 
+     main='fed_grant_num, bins=50', xlab='fed_grant_num', breaks=50)
+length(data_no_NA$fed_grant_num[data_no_NA$fed_grant_num > 5000])
+hist(data_no_NA$fed_grant_num[data_no_NA$fed_grant_num <= 5000], 
+     main='fed_grant_num, bins=50', xlab='fed_grant_num <= 5000', breaks=50)
+length(data_no_NA$fed_grant_num[data_no_NA$fed_grant_num%%1 != 0])
+```
+
+The 22 outliers of `fed_grant_num` greater than 5000 will be omitted. All of the observations are whole numbers, which is what we expect since it is a counting variable.
+
+```{r}
+summary(data_no_NA$fed_grant_avg_amount)
+describe(data_no_NA$fed_grant_avg_amount)
+hist(data_no_NA$fed_grant_avg_amount, 
+     main='fed_grant_avg_amount, bins=50', xlab='fed_grant_avg_amount', breaks=50)
+length(data_no_NA$fed_grant_avg_amount[data_no_NA$fed_grant_avg_amount > 10000])
+hist(data_no_NA$fed_grant_avg_amount[data_no_NA$fed_grant_avg_amount <= 10000], 
+     main='fed_grant_avg_amount, bins=50', xlab='fed_grant_avg_amount <= 10000', breaks=50)
+```
+
+The 12 outliers of `fed_grant_avg_amount` greater than $10,000 will be omitted.
+
+### Cleaning `state_grant_num`, `state_grant_pct`, and `state_grant_avg_amount`
+
+Most observations of `state_grant_pct` are between 0 and 100, but some are greater than 100.
+
+```{r}
+summary(data_no_NA$state_grant_pct)
+describe(data_no_NA$state_grant_pct)
+hist(data_no_NA$state_grant_pct, main='state_grant_pct, bins=50', 
+     xlab='state_grant_pct', breaks=50)
+length(data_no_NA$state_grant_pct[data_no_NA$state_grant_pct > 100])
+```
+
+The 1 observation of `state_grant_pct` greater than 100 will be omitted.
+
+Some observations of `state_grant_num` are extreme outliers. The 95th percentile is 1068. There are 121 observations greater than 3000 and 55 greater than 5000.
+
+```{r}
+summary(data_no_NA$state_grant_num)
+describe(data_no_NA$state_grant_num)
+hist(data_no_NA$state_grant_num, main='state_grant_num, bins=50', 
+     xlab='state_grant_num', breaks=50)
+length(data_no_NA$state_grant_num[data_no_NA$state_grant_num%%1 != 0])
+length(data_no_NA$state_grant_num[data_no_NA$state_grant_num >= 3000])
+length(data_no_NA$state_grant_num[data_no_NA$state_grant_num >= 5000])
+hist(data_no_NA$state_grant_num[data_no_NA$state_grant_num < 5000], 
+     main='state_grant_num, bins=50', xlab='state_grant_num < 5000', breaks=50)
+```
+
+There are no observations of of `state_grant_num` that are not whole numbers, which is what we expect since it is a counting variable. Observations of `state_grant_num` greater than 5000 will be omitted due to being outliers.
+
+```{r}
+summary(data_no_NA$state_grant_avg_amount)
+describe(data_no_NA$state_grant_avg_amount)
+hist(data_no_NA$state_grant_avg_amount, 
+     main='state_grant_avg_amount, bins=50', xlab='state_grant_avg_amount', breaks=50)
+length(data_no_NA$state_grant_avg_amount[data_no_NA$state_grant_avg_amount > 10000])
+hist(data_no_NA$state_grant_avg_amount[data_no_NA$state_grant_avg_amount <= 10000], 
+     main='state_grant_avg_amount, bins=50', xlab='state_grant_avg_amount <= 10000', breaks=50)
+```
+
+`state_grant_avg_amount` has 42 outliers greater than $10,000. Those observations will be omitted.
+
+### Cleaning `loan_num`, `loan_pct`, and `loan_avg_amount`
+
+There are 17 anomalous rows where `loan_pct` is above 100.
+```{r}
+summary(data_no_NA$loan_pct)
+describe(data_no_NA$loan_pct)
+hist(data_no_NA$loan_pct, main='loan_pct, bins=50', xlab='loan_pct', 
+     breaks=50)
+hist(data_no_NA$loan_pct[data_no_NA$loan_pct <= 100], 
+     main='bins=50', xlab='loan_pct <= 100', breaks=50)
+hist(data_no_NA$loan_pct[data_no_NA$loan_pct > 100], 
+     main='loan_pct, bins=50', xlab='loan_pct > 100', breaks=50)
+length(data_no_NA$loan_pct[data_no_NA$loan_pct > 100])
+```
+
+The 17 outliers for `loan_pct` will be omitted.
+
+There are also some extreme outliers for `loan_num` that are worth exploring.
+
+```{r}
+summary(data_no_NA$loan_num)
+describe(data_no_NA$loan_num)
+hist(data_no_NA$loan_num, main='loan_num, bins=5000', xlab='loan_num',
+     breaks=5000)
+length(data_no_NA$loan_num[data_no_NA$loan_num > 50000])
+hist(data_no_NA$loan_num[data_no_NA$loan_num <= 50000], 
+     main='loan_num, bins=500', xlab='loan_num <= 50000',
+     breaks=500)
+length(data_no_NA$loan_num[data_no_NA$loan_num%%1 != 0])
+```
+
+The 2 rows where `loan_num` is greater than 50,000 will be omitted, since those are implausible numbers. All rows are whole numbers, which is what we expect since this is a counting variable.
+
+Most of the `loan_avg_amount` observations are less than $7,000, but there are some high outliers on the right tail of the distribution.
+
+```{r}
+summary(data_no_NA$loan_avg_amount)
+describe(data_no_NA$loan_avg_amount)
+hist(data_no_NA$loan_avg_amount, main='loan_avg_amount, bins=50', 
+     xlab='loan_avg_amount', breaks=50)
+hist(data_no_NA$loan_avg_amount[data_no_NA$loan_avg_amount <= 30000], 
+     main='loan_avg_amount, bins=50', xlab='loan_avg_amount', breaks=50)
+length(data_no_NA$loan_avg_amount[data_no_NA$loan_avg_amount > 30000])
+```
+
+The 4 observations greater than $30,000 will be omitted.
+
+### Cleaning `bachelordegrees`
+
+Analysis of `bachelordegrees` shows some extreme values.
+
+```{r}
+summary(data_no_NA$bachelordegrees)
+describe(data_no_NA$bachelordegrees)
+hist(data_no_NA$bachelordegrees, 
+     main='bachelordegrees, bins=50', xlab='bachelordegrees', breaks=50)
+length(data_no_NA$bachelordegrees[data_no_NA$bachelordegrees == 0])
+length(data_no_NA$bachelordegrees[data_no_NA$bachelordegrees > 10000])
+hist(data_no_NA$bachelordegrees[data_no_NA$bachelordegrees > 0], 
+     main='bachelordegrees, bins=50', xlab='bachelordegrees > 0', breaks=50)
+```
+
+A sizable minority of rows (2615) belong to institutions that did not grant any bachelor's degrees. We suspect that these belong to smaller institutions that do no grant bachelor's degrees. Since we want to focus only on institutions that award bachelor's degrees and higher, these rows will be omitted.
+
+While there are some observations where `bachelordegrees` is extremely high (greater than 10,000), a list of largest universities by undergraduate enrollment shows that these are plausible values [6].
+
+### Cleaning `grad_rate_150_p` and `grad_rate_150_n`
+
+A close examination of `grad_rate_150_p` shows that, as a percentage, most values are between 0 and 1. A small minority of 10 observations are greater than 1, however.
+
+```{r}
+summary(data_no_NA$grad_rate_150_p)
+describe(data_no_NA$grad_rate_150_p)
+length(data_no_NA$grad_rate_150_p[data_no_NA$grad_rate_150_p>1])
+hist(data_no_NA$grad_rate_150_p[data_no_NA$grad_rate_150_p <= 1], 
+     xlab="grad_rate_150_p <= 1",
+     main="Histogram of grad_rate_150_p <= 1")
+hist(data_no_NA$grad_rate_150_p[data_no_NA$grad_rate_150_p > 1], 
+     xlab="grad_rate_150_p > 1", main="Histogram of grad_rate_150_p > 1")
+#data_no_NA[data_no_NA$grad_rate_150_p > 1, ]
+```
+
+The rows where `grad_rate_150_p` is greater than 1 also have values of `grad_rate_150_n` that are not whole numbers. Since `grad_rate_150_n` is a count of students that graduated, we would expect this to be whole numbers. Overall, there are 48 rows where `grad_rate_150_n` is not a whole number, which include all 10 rows where `grad_rate_150_p` is greater than 1.
+
+```{r}
+summary(data_no_NA$grad_rate_150_n)
+describe(data_no_NA$grad_rate_150_n)
+hist(data_no_NA$grad_rate_150_n,
+     xlab="grad_rate_150_n", main="grad_rate_150_n, bins=50", breaks=50)
+length(data_no_NA$grad_rate_150_n[data_no_NA$grad_rate_150_n%%1 != 0])
+data_no_NA$grad_rate_150_n[data_no_NA$grad_rate_150_n%%1 != 0]
+data_no_NA[data_no_NA$grad_rate_150_p > 1, c("X")]
+data_no_NA[data_no_NA$grad_rate_150_n%%1 != 0, c("X")]
+describe(data_no_NA$grad_rate_150_n[data_no_NA$grad_rate_150_n%%1 != 0])
+describe(data_no_NA$grad_rate_150_n[data_no_NA$grad_rate_150_n%%1 == 0])
+hist(data_no_NA$grad_rate_150_n[data_no_NA$grad_rate_150_n%%1 == 0],
+     xlab="grad_rate_150_n (whole numbers only)", main="grad_rate_150_n, bins=50", breaks=50)
+```
+
+The rows where `grad_rate_150_n` is not a whole number have a smaller mean by a factor of 10.
+
+We have no data that may explain or account for the suspicious values of `grad_rate_150_p` and `grad_rate_150_n`. As such, we decided to omit these rows, rather than try to transform or scale them.
+
+### Cleaning `ftretention_rate`
+
+A summary and histogram of `ftretention_rate` show no unusual values. It is a rate between 0 an 1.
+
+```{r}
+summary(data_no_NA$ftretention_rate)
+hist(data_no_NA$ftretention_rate, main='bins=50', xlab='ftretention_rate', 
+     breaks=50) 
+```
+
+### Removing Outliers
+
+```{r}
+# Removing outliers and constraints percentages 
+
+data = data_no_NA[ (data_no_NA$academicyear == 2009) &
+            (data_no_NA$fed_grant_num < 5000) & (0 < data_no_NA$fed_grant_num)  &
+            (data_no_NA$fed_grant_pct <= 100) & (0 <= data_no_NA$fed_grant_pct) &
+            (data_no_NA$fed_grant_avg_amount < 10000) &  (0 < data_no_NA$fed_grant_avg_amount)  &
+            (data_no_NA$state_grant_num < 5000) & (0 < data_no_NA$state_grant_num)  &
+            (data_no_NA$state_grant_pct <= 100) & (0 <= data_no_NA$state_grant_pct) & 
+            (data_no_NA$state_grant_avg_amount < 10000) & (0 < data_no_NA$state_grant_avg_amount ) &
+            (data_no_NA$loan_num < 50000) & (0 < data_no_NA$loan_num) &
+            (data_no_NA$loan_pct <= 100) & (0 <= data_no_NA$loan_pct) &
+            (data_no_NA$loan_avg_amount < 30000) & (0 < data_no_NA$loan_avg_amount) &
+            (0 < data_no_NA$bachelordegrees) &
+            (data_no_NA$grad_rate_150_n%%1 == 0) &  (0 < data_no_NA$grad_rate_150_n) &
+            (data_no_NA$grad_rate_150_p <= 1) ,  ]
+
+# Unlike the other percentage variables, grad_rate_150_p is a proportion between 0 and 1.
+# Whereas the other *_pct variables are percentages between 0 and 100.
+# Multiply by 100 grad_rate_150_p
+# Then a 1 unit change means a 1 percentage point change, which is probably 
+# much more meaningful and useful.
+
+data$grad_rate_150_p <- data$grad_rate_150_p * 100
+
+str(data)
+summary(data)
+```
+
+How many rows remain after removing outliers?
+
+```{r}
+nrow(data)
+```
+
+Perform transformation to Normal Distribution
+
+```{r}
+data_TF = data
+hist(log(data$fed_grant_num), main='bins=50', xlab='log(fed_grant_num)',
+breaks=50)
+data_TF$fed_grant_num = log(data$fed_grant_num)
+
+hist((data$fed_grant_avg_amount)^(2/3), main='bins=50', xlab='(fed_grant_avg_amount)^(2/3)',
+breaks=50)
+data_TF$fed_grant_avg_amount = (data$fed_grant_avg_amount)^(2/3)
+
+hist(log(data$state_grant_num), main='bins=50', xlab='log(state_grant_num)',
+breaks=50)
+data_TF$state_grant_num = log(data$state_grant_num)
+
+hist((data$state_grant_avg_amount)^(2/3), main='bins=50', xlab='sqrt(state_grant_avg_amount)^(2/3)',
+breaks=50)
+data_TF$state_grant_avg_amount = log(data$state_grant_avg_amount)
+
+hist(log(data$loan_num), main='bins=50', xlab='log(loan_num)',
+breaks=50)
+data_TF$loan_num = log(data$loan_num)
+
+hist(log(data$loan_avg_amount), main='bins=50', xlab='log(loan_avg_amount)',
+breaks=50)
+data_TF$loan_avg_amount = log(data$loan_avg_amount)
+
+hist(log(data$bachelordegrees), main='bins=50', xlab='log(bachelordegrees)',
+breaks=50)
+data_TF$bachelordegrees = log(data$bachelordegrees)
+
+hist(log(data$grad_rate_150_n), main='bins=50', xlab='log(grad_rate_150_n)',
+breaks=50)
+data_TF$grad_rate_150_n = log(data$grad_rate_150_n)
+
+```
+
+## Modeling
+
+We have three variables related to graduation rate: `bachelordegrees`, `grad_rate_150_n`, and `grad_rate_150_p`. It is important to note that `bachelordegrees` and `grad_rate_150_n` are absolute counts, whereas `grad_rate_150_p` is a percentage between 0 and 100.
+
+We chose not to model `bachelordegrees` since our EDA shows it is very similar to `grad_rate_150_n` and `grad_rate_150_n` has a corresponding percentage variable.
+
+We wish to assess whether any of these dependent variables can be predicted by the variables related to student aid. The independent variables at our disposal are: `fed_grant_num`, `fed_grant_pct`, `fed_grant_avg_amount`, `state_grant_num`, `state_grant_pct`, `state_grant_avg_amount`, `loan_num`, `loan_pct`, and `loan_avg_amount`. Here we have available absolute counts, percentages, and averages.
+
+## Using `grad_rate_150_n` as academic success measure
+
+### avg_amount independent vars
+
+Start with most parsimonious model:
+
+```{r}
+grad_num150_a_m1 <- lm(grad_rate_150_n ~ fed_grant_avg_amount, data = data_TF)
+summary(grad_num150_a_m1) 
+# statistically significant, positive coefficient, but low magnitude
+#Adjusted R-squared:  0.09216
+
+bptest(grad_num150_a_m1)
+# significant, so need heteroskedasticity-corrected standard errors to evaluate the model
+coeftest(grad_num150_a_m1, vcov=vcovHC)
+```
+
+Assess the model diagnostics:
+
+```{r}
+plot(grad_num150_a_m1, which=2)
+# Q-Q plot curves away from diagonal at left end
+# Suggests non-normality of errors
+
+# Residuals vs. Predictors plot
+plot(data_TF$fed_grant_avg_amount, resid(grad_num150_a_m1), 
+     xlab="fed_grant_avg_amount", ylab="Residuals",
+     main="Residuals vs. Predictors: grad_rate_150_n")
+plot(grad_num150_a_m1, which=3)
+# Scale-Location plot provides evidence of heteroskedasticity,
+# since the red line bends downward.
+# This is consistent with the results of bptest
+
+plot(grad_num150_a_m1, which=1)
+# Some non-flatness in red residual line and overall downward trend
+```
+
+Test whether `state_grant_avg_amount` improves the model:
+
+```{r}
+grad_num150_a_m2 <- lm(grad_rate_150_n ~ fed_grant_avg_amount + state_grant_avg_amount, data = data_TF)
+coeftest(grad_num150_a_m2, vcov=vcovHC)
+# significant model, both coefficients positive, but little practical effect
+waldtest(grad_num150_a_m2, grad_num150_a_m1, vcov = vcovHC)
+```
+
+We get a statistically significant F-statistic, so we reject the null hypothesis that `state_grant_avg_amount` has no effect. So `grad_num150_a_m2` is preferred over `grad_num150_a_m1`.
+
+Test whether `loan_avg_amount` improves the model.
+
+```{r}
+grad_num150_a_m3 <- lm(grad_rate_150_n ~ fed_grant_avg_amount + state_grant_avg_amount
+                       + loan_avg_amount, data = data_TF)
+coeftest(grad_num150_a_m3, vcov=vcovHC)
+# significant model, but small magnitude
+# loan_avg_amount has negative coefficient
+waldtest(grad_num150_a_m3, grad_num150_a_m2, vcov = vcovHC)
+bptest(grad_num150_a_m3)
+```
+
+We get a statistically significant F-statistic, so we reject the null hypothesis that `loan_avg_amount` has no effect. So `grad_num150_a_m3` is preferred over `grad_num150_a_m2`.
+
+Assess model diagnostics:
+
+```{r}
+plot(grad_num150_a_m3, which=1)
+# Red residual line more flat overall, bends down at right, fairly close to 0
+# ZCM and linearity OK
+
+plot(grad_num150_a_m3, which=2)
+# Q-Q plot improved over grad_num150_a_m1 model
+
+plot(grad_num150_a_m3, which=3)
+# Scale-Location plot provides evidence of heteroskedasticity,
+# since the red line non-flat at left end.
+# This is consistent with the results of bptest
+```
+
+### Percentage independent vars
+
+```{r}
+grad_num150_p_m1 <- lm(grad_rate_150_n ~ fed_grant_pct, data = data_TF)
+summary(grad_num150_p_m1) 
+# statistically significant, negative coefficient
+#Adjusted R-squared:  0.2941 
+
+bptest(grad_num150_p_m1)
+coeftest(grad_num150_p_m1, vcov=vcovHC)
+```
+
+Assess the model diagnostics:
+```{r}
+plot(grad_num150_p_m1, which=2)
+# Q-Q plot curves away from diagonal at left end
+# Suggests non-normality of errors
+
+# Residuals vs. Predictors plot
+plot(data_TF$fed_grant_avg_amount, resid(grad_num150_p_m1), 
+     xlab="fed_grant_avg_amount", ylab="Residuals",
+     main="Residuals vs. Predictors: grad_num150_p_m1")
+
+plot(grad_num150_p_m1, which=3)
+# Scale-Location plot provides evidence of heteroskedasticity,
+# since the red line bends downward.
+# This is consistent with the results of bptest
+
+plot(grad_num150_p_m1, which=1)
+# Slight u-shape in red residual line, roughly even distribution in sign
+# Overall fairly flat and close to 0. ZCM and linearity assumptions OK
+```
+
+Test whether `state_grant_pct` should be included: 
+
+```{r}
+grad_num150_p_m2 <- lm(grad_rate_150_n ~ fed_grant_pct + state_grant_pct, data = data_TF)
+coeftest(grad_num150_p_m2, vcov=vcovHC)
+# significant model, fed negative, state positive, but little practical effect
+waldtest(grad_num150_p_m2, grad_num150_p_m1, vcov = vcovHC)
+# improves the model over m1
+```
+
+```{r}
+grad_num150_p_m3 <- lm(grad_rate_150_n ~ fed_grant_pct + state_grant_pct + loan_pct, data = data_TF)
+coeftest(grad_num150_p_m3, vcov=vcovHC)
+# all 3 coefficients stat significant, fed_grant and loan negative, state grant positive
+# all of little practical significance
+waldtest(grad_num150_p_m3, grad_num150_p_m2, vcov = vcovHC)
+# improves model over m2
+
+bptest(grad_num150_p_m3)
+# evidence of heteroskedasticity
+
+plot(grad_num150_p_m3, which=1)
+# Red residual line much flatter than avg_amount model
+# Evidence that ZCM and linearity assumptions OK
+
+plot(grad_num150_p_m3, which=2)
+# Q-Q plot approximately the same as avg_amount model
+# Follows the diagonal closely for about 2/3, then bends down at bottom 1/3
+
+plot(grad_num150_p_m3, which=3)
+# provides evidence of heteroskedasticity
+```
+
+We conclude that `grad_num150_p_m3` is the best model for predicting `grad_rate_150_n`. It has better diagnostics than the `grad_num150_a_m3` model. While it shows statistical significance for all 3 coefficients, all of the coefficients are of little practical significance.
+
+## Using grad_rate_150_p as academic success measure
+
+```{r}
+scatterplotMatrix(~ grad_rate_150_p + fed_grant_pct + fed_grant_avg_amount + 
+                    state_grant_pct + state_grant_avg_amount + 
+                    loan_pct + loan_avg_amount, data = data_TF)
+```
+
+From above scatter plot, there are no variables about financial aid which are significant depending on $grad_rate_150_p$. But, we still try to build a linear model among these financial aid related variables to see how insignificant of them.
+
+We proceed with this modeling with some caution. Since the dependent variable is a proportion, a logit transformation may be needed [7]. However, since completion rates tend to cluster in the middle, and the 0 - 1 isn't censored, we think a standard LM is sufficient. Since most of distribution is clustered in the middle, we believe a regular linear model is justified [8].
+
+### avg_amount independent variables
+
+Start with most parsimonious model:
+
+```{r}
+grad_rate_a_m1 <- lm(grad_rate_150_p ~ fed_grant_avg_amount, data = data_TF)
+summary(grad_rate_a_m1)
+bptest(grad_rate_a_m1)
+# evidence of heteroskedasticity, need robust errors
+coeftest(grad_rate_a_m1, vcov=vcovHC)
+# Significant model. Positive coefficient but low magnitude (no practical significance)
+```
+
+Assess the model diagnostics:
+```{r}
+plot(grad_rate_a_m1, which=2)
+# Q-Q plot fairly close to diagonal
+# Suggests normality of erros
+
+# Residuals vs. Predictors plot
+plot(data_TF$fed_grant_avg_amount, resid(grad_rate_a_m1), 
+     xlab="fed_grant_avg_amount", ylab="Residuals",
+     main="Residuals vs. Predictors: grad_rate_a_m1")
+# clustering around middle, but roughly even distribution in sign
+
+plot(grad_rate_a_m1, which=3)
+# Scale-Location plot provides evidence of heteroskedasticity,
+# since the red line bends up on left half.
+# This is consistent with the results of bptest
+
+plot(grad_rate_a_m1, which=1)
+# Some non-flatness in red residual line and overall downward trend
+```
+
+Build up model by adding variables:
+
+```{r}
+grad_rate_a_m2 <- lm(grad_rate_150_p ~ fed_grant_avg_amount 
+                     + state_grant_avg_amount, data = data_TF)
+coeftest(grad_rate_a_m2, vcov=vcovHC)
+# statistical significance, somewhat practical as well
+
+bptest(grad_rate_a_m2)
+# evidence of heteroskedasticity
+
+waldtest(grad_rate_a_m2, grad_rate_a_m1, vcov = vcovHC)
+```
+
+We get a statistically significant F-statistic, so we reject the null hypothesis that `state_grant_avg_amount` has no effect. So `grad_rate_a_m2` is preferred over `grad_rate_a_m1`.
+
+Test whether to include `loan_avg_amount`:
+
+```{r}
+grad_rate_a_m3 <- lm(grad_rate_150_p ~ fed_grant_avg_amount 
+                     + state_grant_avg_amount + loan_avg_amount, 
+                     data = data_TF)
+coeftest(grad_rate_a_m3, vcov=vcovHC)
+# no statistical significance for loan_avg_amount!
+waldtest(grad_rate_a_m3, grad_rate_a_m2, vcov = vcovHC)
+```
+
+We get a statistically insignificant F-statistic. So we cannot reject the null hypothesis that `loan_avg_amount` has no effect. So `grad_rate_a_m2` is preferred.
+
+Model diagnostics for grad_rate_a_m2:
+```{r}
+plot(grad_rate_a_m2, which=2)
+# Q-Q plot fairly close to diagonal
+# Suggests normality of erros
+
+plot(grad_rate_a_m2, which=3)
+# Scale-Location plot provides evidence of heteroskedasticity,
+# since the red line bends up on left half.
+# This is consistent with the results of bptest
+
+plot(grad_rate_a_m2, which=1)
+# Residuals vs Fitted plot has sharp bend upward on left side
+# Residuals are mostly positive, except in the middle of the fitted values
+# May not follow zero conditional mean assumption
+```
+
+So despite the promising numbers from the F-statistic `grad_rate_a_m2`, we do not use this as evidence to reject our overall null hypothesis, due to poor diagnostics and strong suspicion of ZCM violation.
+
+### Percentage independent variables
+
+Start with most parsimonious model:
+
+```{r}
+grad_rate_p_m1 <- lm(grad_rate_150_p ~ fed_grant_pct, data = data_TF)
+summary(grad_rate_p_m1)
+bptest(grad_rate_p_m1)
+# evidence of heteroskedasticity
+coeftest(grad_rate_p_m1, vcov=vcovHC)
+# stat significant, negative coefficient, but low magnitude
+```
+
+Assess model diagnostics:
+```{r}
+plot(grad_rate_p_m1, which=2)
+# Q-Q plot fairly close to diagonal, only curls away at top
+# Suggests normality of erros
+
+# Residuals vs. Predictors plot
+plot(data_TF$fed_grant_avg_amount, resid(grad_rate_p_m1), 
+     xlab="fed_grant_avg_amount", ylab="Residuals",
+     main="Residuals vs. Predictors: grad_rate_p_m1")
+# clustering around middle, but roughly even distribution in sign
+
+plot(grad_rate_p_m1, which=3)
+# Scale-Location plot provides evidence of heteroskedasticity,
+# Red line relatively flat
+
+plot(grad_rate_p_m1, which=1)
+# Residual line fairly flat and close to 0. Slight u-shape
+```
+
+Build up model. Assess whether `state_grant_pct` should be included:
+
+```{r}
+grad_rate_p_m2 <- lm(grad_rate_150_p ~ fed_grant_pct + state_grant_pct, 
+                     data = data_TF)
+bptest(grad_rate_p_m2)
+# evidence of heteroskedasticity
+coeftest(grad_rate_p_m2, vcov=vcovHC)
+# significant model, both negative signs, low magnitude
+
+waldtest(grad_rate_p_m2, grad_rate_p_m1, vcov = vcovHC)
+```
+
+We get a statistically significant F-statistic, so we reject the null hypothesis that `state_grant_pct` has no effect. So `grad_rate_p_m2` is preferred over `grad_rate_p_m1`.
+
+Test whether `loan_pct` should be included:
+
+```{r}
+grad_rate_p_m3 <- lm(grad_rate_150_p ~ fed_grant_pct + state_grant_pct
+                     + loan_pct, data = data_TF)
+bptest(grad_rate_p_m3)
+# evidence of heteroskedasticity
+coeftest(grad_rate_p_m3, vcov=vcovHC)
+# loan_pct is not statistically significant
+
+waldtest(grad_rate_p_m3, grad_rate_p_m2, vcov = vcovHC)
+```
+
+We get a statistically insignificant F-statistic. So we cannot reject the null hypothesis that `loan_pct` has no effect. So `grad_rate_p_m2` is preferred over `grad_rate_p_m3`.
+
+Model diagnostics:
+
+```{r}
+plot(grad_rate_p_m2, which=2)
+# Q-Q plot fairly close to diagonal, except at top
+# Suggests normality of erros
+
+plot(grad_rate_p_m2, which=3)
+# Scale-Location plot provides no evidence of heteroskedasticity
+
+plot(grad_rate_p_m2, which=1)
+# Residuals vs Fitted plot fairly flat and close to zero
+# ZCM and linearity assumptions OK
+```
+
+Due to better diagnostics, we conclude that `grad_rate_p_m2` is a better choice than `grad_rate_a_m2` for predicting `grad_rate_150_p`.
+
+## Part 2 Conclusion: 
+
+The percentage independent variables were overall better predictors for both the total number of students that will graduate from an institution and the percentage rate of students graduating from the institution.
+
+In the case of predicting the number of students that will graduate, we found a statistically significant model that that suggested that federal grant percentage and loan percentage have negative effects, state grant percentage has a positive effect on graduation rate. However, these effects are of very little practical significance.
+
+In the case of predicting the percentage rate, we found a statistically significant model that suggested that federal and state grant percentage rate actually have a negative effect on graduation rate. However, this effect is of very little practical significance. 
+
+We conclude that there is a negligibly small negative effect on graduation metrics by loans and grants. The negative effect on student success for students who obtained aid , while counter-intuitive, may be accounted for by the large amount of institutional grant in corresponding institutions. It would be interesting to develop a new financial aid measure that incorporate the correlation between institutional grant and tuition, and reexamine the statistical effects of predictor variables studied in this study.
+
+# References
+
+[1]"What are Title IV Programs?", Federalstudentaid.ed.gov, 2016. [Online]. Available: http://federalstudentaid.ed.gov/site/front2back/programs/programs/fb_03_01_0030.htm. [Accessed: 21- Nov- 2016].
+
+[2]"College Scorecard - College Scorecard - Data.gov", Catalog.data.gov, 2016. [Online]. Available: https://catalog.data.gov/dataset/college-scorecard/resource/70e3a585-0ba2-4ee3-badf-73c015d7041f. [Accessed: 21- Nov- 2016].
+
+[3]"The Condition of Education - Spotlights - 2015 Spotlights - Postsecondary Attainment: Differences by Socioeconomic Status - Indicator May (2015)", Nces.ed.gov, 2016. [Online]. Available: http://nces.ed.gov/programs/coe/indicator_tva.asp. [Accessed: 21- Nov- 2016].
+
+[4]M. Cahalan and L. Perna, "Indicators of Higher Education Equity in the United States", The Pell Institute for the Study of Opportunity in Higher Education and The University of Pennsylvania Alliance for Higher Education and Democracy, 2015. [Online]. Available: http://www.pellinstitute.org/downloads/publications-Indicators_of_Higher_Education_Equity_in_the_US_45_Year_Trend_Report.pdf. [Accessed: 21- Nov- 2016].
+
+[5]D. Desrochers and J. Sun, "The Integrated Postsecondary Education Data System - Delta Cost Project Database", Nces.ed.gov, 2015. [Online]. Available: http://nces.ed.gov/ipeds/deltacostproject/. [Accessed: 02- Dec- 2016].
+
+[6]J.  Friedman, "10 Universities With the Most Undergraduate Students", usnews.com, 2016. [Online]. Available: http://www.usnews.com/education/best-colleges/the-short-list-college/articles/2016-09-22/10-universities-with-the-most-undergraduate-students. [Accessed: 02- Dec- 2016].
+
+[7]A.  McDowell and N.  Cox, "Stata | FAQ: Logit transformation", Stata.com, 2016. [Online]. Available: http://www.stata.com/support/faqs/statistics/logit-transformation/. [Accessed: 05- Dec- 2016].
+
+[8]K.  Grace-Martin, "Proportions as Dependent Variable in Regression–Which Type of Model?", Theanalysisfactor.com, 2014. [Online]. Available: http://www.theanalysisfactor.com/proportions-as-dependent-variable-in-regression-which-type-of-model/. [Accessed: 07- Dec- 2016].
+
+# References
+
+[1]"What are Title IV Programs?", Federalstudentaid.ed.gov, 2016. [Online]. Available: http://federalstudentaid.ed.gov/site/front2back/programs/programs/fb_03_01_0030.htm. [Accessed: 21- Nov- 2016].
+
+[2]"College Scorecard - College Scorecard - Data.gov", Catalog.data.gov, 2016. [Online]. Available: https://catalog.data.gov/dataset/college-scorecard/resource/70e3a585-0ba2-4ee3-badf-73c015d7041f. [Accessed: 21- Nov- 2016].
+
+[3]"The Condition of Education - Spotlights - 2015 Spotlights - Postsecondary Attainment: Differences by Socioeconomic Status - Indicator May (2015)", Nces.ed.gov, 2016. [Online]. Available: http://nces.ed.gov/programs/coe/indicator_tva.asp. [Accessed: 21- Nov- 2016].
+
+[4]M. Cahalan and L. Perna, "Indicators of Higher Education Equity in the United States", The Pell Institute for the Study of Opportunity in Higher Education and The University of Pennsylvania Alliance for Higher Education and Democracy, 2015. [Online]. Available: http://www.pellinstitute.org/downloads/publications-Indicators_of_Higher_Education_Equity_in_the_US_45_Year_Trend_Report.pdf. [Accessed: 21- Nov- 2016].
+
+[5]D. Desrochers and J. Sun, "The Integrated Postsecondary Education Data System - Delta Cost Project Database", Nces.ed.gov, 2015. [Online]. Available: http://nces.ed.gov/ipeds/deltacostproject/. [Accessed: 02- Dec- 2016].
+
+[6]J.  Friedman, "10 Universities With the Most Undergraduate Students", usnews.com, 2016. [Online]. Available: http://www.usnews.com/education/best-colleges/the-short-list-college/articles/2016-09-22/10-universities-with-the-most-undergraduate-students. [Accessed: 02- Dec- 2016].
